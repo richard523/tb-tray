@@ -31,7 +31,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import AyatanaAppIndicator3 as AI  # noqa: E402
 from gi.repository import GLib, Gtk  # noqa: E402
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 ICON_DIR = os.path.expanduser("~/.cache/tb-tray")
 LOW_BATT, REARM_BATT = 20, 25
 COLORS = {"ok": "#3fb950", "charging": "#e3b341",
@@ -93,8 +93,11 @@ def status_text(st):
         s = "transmitter not answering - replug the dongle"
     elif state == "NO_SINK":
         s = "dongle present but its sound card is not up yet"
+    elif state == "BUSY":
+        s = "transmitter busy - another status query is running"
     elif state == "NO_ACCESS":
-        s = "cannot open the transmitter - rerun the tb-heal installer"
+        s = ("cannot open the transmitter over USB "
+             "(no permission, or an unrelated app holds it)")
     elif state == "NO_HIDAPI":
         s = "hidapi library missing: %s" % st.get("error", "")
     elif state == "NO_HEAL":
@@ -111,21 +114,29 @@ def status_text(st):
 
 
 def fetch(heal):
-    """One tb-heal --json poll. Never raises; returns a status dict."""
-    cmd = ["tb-heal", "--json"]
-    if not heal:
-        cmd.append("--no-heal")
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        st = json.loads(r.stdout)
-        st["_updated"] = time.strftime("%H:%M")
-        return st
-    except FileNotFoundError:
-        return {"state": "NO_HEAL", "ok": False,
-                "_updated": time.strftime("%H:%M")}
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return {"state": "FAIL", "ok": False,
-                "_updated": time.strftime("%H:%M")}
+    """One tb-heal --json poll. Never raises; returns a status dict.
+    A transient failure (USB claim lost to a concurrent query - tb-heal
+    serializes on its lock, but a foreign app can still race) is retried
+    once before it is allowed onto the screen."""
+    def once():
+        try:
+            r = subprocess.run(["tb-heal", "--json"] + ([] if heal
+                                else ["--no-heal"]),
+                               capture_output=True, text=True, timeout=15)
+            st = json.loads(r.stdout)
+            st["_updated"] = time.strftime("%H:%M")
+            return st
+        except FileNotFoundError:
+            return {"state": "NO_HEAL", "ok": False,
+                    "_updated": time.strftime("%H:%M")}
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return {"state": "FAIL", "ok": False,
+                    "_updated": time.strftime("%H:%M")}
+    st = once()
+    if st.get("state") in ("NO_ACCESS", "BUSY"):
+        time.sleep(2)
+        st = once()
+    return st
 
 
 # ---------------------------------------------------------------- tray

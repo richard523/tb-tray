@@ -50,7 +50,10 @@ The state text is always in the tooltip and the first menu line - e.g.
 | `--version` | print version |
 
 Polling is report-only by default and single-instance guarded; a second
-launch prints a note and exits.
+launch prints a note and exits. A poll that comes back with a transient
+error (USB claim lost to a concurrent query - tb-heal serializes its own
+exchanges on a lock since v1.0.1, so this is rare) is retried once
+before the error reaches the icon.
 
 ## How it reads the battery
 
