@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=TB Tray
+Comment=Turtle Beach headset battery indicator (tb-heal companion)
+Exec=__HOME__/.local/bin/tb-tray
+Icon=audio-headset-symbolic
+Terminal=false
+X-GNOME-Autostart-enabled=true
