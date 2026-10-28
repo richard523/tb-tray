@@ -45,7 +45,7 @@ The state text is always in the tooltip and the first menu line - e.g.
 
 | Option | Meaning |
 |---|---|
-| `--interval S` | poll interval, default 30 s (min 10) |
+| `--interval S` | poll interval, default 120 s (min 10) |
 | `--heal` | also re-run tb-heal's self-heal each poll (default: report only - a healing daemon would fight deliberate output switching) |
 | `--version` | print version |
 
@@ -57,11 +57,21 @@ before the error reaches the icon.
 
 ## How it reads the battery
 
-Each poll runs `tb-heal --json --no-heal` (~1.5 s, the Airoha RACE
+Each poll runs `tb-heal --json --no-heal` (~0.4 s, the Airoha RACE
 exchange against the transmitter - read-only). The poll runs in a worker
 thread so the tray never blocks. Battery reported while unlinked is the
 dongle's last-known value; the icon goes gray in that case so a stale
 number is never mistaken for a live one.
+
+The 120 s default is deliberate. Every poll briefly detaches the
+dongle's HID driver - a kernel usbfs requirement: control transfers
+need an interface claim, and the claim needs the driver off (verified
+EBUSY otherwise, even for EP0). During that ~0.4 s window the headset's
+physical volume/mic controls are blind. Slow cadence plus the trimmed
+exchange keeps the blind window at ~0.3% duty, so rolling the wheel
+during an update is essentially never hit. tb-heal serializes its own
+concurrent exchanges on a lock, and a poll that still fails transiently
+is retried once before the error reaches the icon.
 
 ## License
 

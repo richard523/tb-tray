@@ -2,7 +2,7 @@
 """tb-tray - Turtle Beach Stealth 700 Gen 3 battery indicator for the tray.
 
 Ayatana AppIndicator companion to tb-heal: polls `tb-heal --json` every
-30 s and shows the headset battery as a tray icon - the percent drawn
+120 s and shows the headset battery as a tray icon - the percent drawn
 into the icon, color-coded - plus a status menu.
 
 Icon:    green = linked, amber = charging, red = linked + <=20%,
@@ -31,7 +31,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import AyatanaAppIndicator3 as AI  # noqa: E402
 from gi.repository import GLib, Gtk  # noqa: E402
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 ICON_DIR = os.path.expanduser("~/.cache/tb-tray")
 LOW_BATT, REARM_BATT = 20, 25
 COLORS = {"ok": "#3fb950", "charging": "#e3b341",
@@ -258,8 +258,8 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(
         description="Turtle Beach Stealth 700 Gen 3 battery tray indicator")
-    ap.add_argument("--interval", type=int, default=30, metavar="S",
-                    help="poll interval in seconds (default 30, min 10)")
+    ap.add_argument("--interval", type=int, default=120, metavar="S",
+                    help="poll interval in seconds (default 120, min 10)")
     ap.add_argument("--heal", action="store_true",
                     help="also keep the TB sink default/unmuted each poll "
                          "(default: report only)")
