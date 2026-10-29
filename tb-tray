@@ -9,7 +9,7 @@ Icon:    green = linked, amber = charging, red = linked + <=20%,
          gray = not linked / transmitter / tooling problem
 Label:   "90%" next to the icon (where the shell supports labels)
 Menu:    live status line / Refresh now / Copy status / Run tb-heal /
-         Quit
+         Kick audio / Quit
 
 Polling is report-only by default (--no-heal): a long-running daemon
 that heals every cycle would fight deliberate output switching. Pass
@@ -31,7 +31,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import AyatanaAppIndicator3 as AI  # noqa: E402
 from gi.repository import GLib, Gtk  # noqa: E402
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 ICON_DIR = os.path.expanduser("~/.cache/tb-tray")
 LOW_BATT, REARM_BATT = 20, 25
 COLORS = {"ok": "#3fb950", "charging": "#e3b341",
@@ -146,6 +146,7 @@ class Tray:
         self.interval, self.heal = interval, heal
         self.st = {}
         self.low_notified = False
+        self.prev_link = None
         self.ind = AI.Indicator.new("tb-tray", icon_path("off", "", 14),
                                     AI.IndicatorCategory.HARDWARE)
         self.ind.set_status(AI.IndicatorStatus.ACTIVE)
@@ -163,6 +164,11 @@ class Tray:
         menu.append(Gtk.SeparatorMenuItem())
         item = Gtk.MenuItem(label="Run tb-heal")
         item.connect("activate", self.run_tb_heal)
+        menu.append(item)
+        item = Gtk.MenuItem(label="Kick audio (no-sound fix)")
+        item.connect("activate", lambda *_: threading.Thread(
+            target=self.kick_audio, args=("manual",),
+            daemon=True).start())
         menu.append(item)
         menu.append(Gtk.SeparatorMenuItem())
         item = Gtk.MenuItem(label="Quit")
@@ -186,7 +192,42 @@ class Tray:
         self.item_status.set_label(line)
         self.ind.set_tooltip_full(path, "Turtle Beach", line)
         self.low_battery(st)
+        self.link_changed(st)
         print("tb-tray: %s" % line, flush=True)
+
+    def link_changed(self, st):
+        """Kick the dongle's audio pipe once when the headset links
+        again - the dongle fumbles stream transitions around a
+        power-on and audio stays dead until the pipe is reopened."""
+        linked = st.get("state") == "LINKED"
+        if self.prev_link is not None and linked and not self.prev_link:
+            threading.Thread(target=self.kick_audio,
+                             args=("link re-established",),
+                             daemon=True).start()
+        self.prev_link = linked
+
+    def kick_audio(self, reason):
+        """Close and reopen the dongle's ALSA sink - the pipe it
+        streams through. ~1 s blip; revives a dongle that stopped
+        forwarding (verified live: suspend-toggle restored audio when
+        the sink was streaming, linked and silent to the wearer)."""
+        try:
+            r = subprocess.run(["pactl", "list", "short", "sinks"],
+                               capture_output=True, text=True, timeout=5)
+            name = next((l.split()[1] for l in r.stdout.splitlines()
+                         if "Turtle_Beach" in l), None)
+            if not name:
+                print("tb-tray: kick: no Turtle Beach sink found",
+                      flush=True)
+                return
+            subprocess.run(["pactl", "suspend-sink", name, "1"],
+                           capture_output=True, timeout=5)
+            time.sleep(0.4)
+            subprocess.run(["pactl", "suspend-sink", name, "0"],
+                           capture_output=True, timeout=5)
+            print("tb-tray: audio pipe kicked (%s)" % reason, flush=True)
+        except OSError as e:
+            print("tb-tray: kick failed: %s" % e, flush=True)
 
     def low_battery(self, st):
         """One toast when the battery crosses LOW_BATT, rearmed at

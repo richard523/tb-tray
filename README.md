@@ -43,6 +43,7 @@ the first menu entry, e.g.
 | Refresh now | poll immediately |
 | Copy status | `wl-copy` the status line |
 | Run tb-heal | one-shot tb-heal, report shown as a notification |
+| Kick audio | close and reopen the dongle's audio pipe - the fix when the headset goes silent while everything streams fine |
 | Quit | exit (autostart brings it back next login) |
 
 ## GNOME
@@ -110,6 +111,22 @@ tb-heal's trimmed exchange keeps the blind window at ~0.3% duty, so
 rolling the volume wheel during an update is essentially never hit.
 If you also run tb-heal manually or accept a longer blind window,
 `--interval 300` is a reasonable belt-and-braces setting.
+
+## Self-healing audio
+
+The dongle occasionally stops forwarding audio to the headset while
+everything PC-side is provably fine - sink streaming, unmuted, radio
+linked (a firmware quirk around stream transitions). tb-tray 1.0.3
+heals it:
+
+- when a poll sees the headset link again (`UNLINKED -> LINKED`), the
+  dongle's audio pipe is automatically closed and reopened (~1 s blip)
+- **Kick audio** in the menu does the same on demand - one click
+  instead of the old Analog/Digital profile-flipping dance, for any
+  silent-while-streaming state
+
+The kick is `pactl suspend-sink <TB> 1` then `0` - verified live: it
+restored audio both times the dongle wedged.
 
 ## License
 
