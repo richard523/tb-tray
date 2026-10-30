@@ -120,13 +120,17 @@ linked (a firmware quirk around stream transitions). tb-tray 1.0.3
 heals it:
 
 - when a poll sees the headset link again (`UNLINKED -> LINKED`), the
-  dongle's audio pipe is automatically closed and reopened (~1 s blip)
+  dongle's audio card is automatically flipped to another profile and
+  back (~2 s) - fully closing and reopening its USB audio interface
 - **Kick audio** in the menu does the same on demand - one click
   instead of the old Analog/Digital profile-flipping dance, for any
   silent-while-streaming state
 
-The kick is `pactl suspend-sink <TB> 1` then `0` - verified live: it
-restored audio both times the dongle wedged.
+The kick is a full card-profile flip (`pactl set-card-profile` away
+and back) - the same remedy as manually switching Analog/Digital in
+GNOME, which is what always revived a wedged dongle. (1.0.3 used a
+lighter suspend-toggle; a day of live wedges showed it was sometimes
+not enough.)
 
 ## License
 

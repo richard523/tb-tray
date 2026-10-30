@@ -31,7 +31,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import AyatanaAppIndicator3 as AI  # noqa: E402
 from gi.repository import GLib, Gtk  # noqa: E402
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 ICON_DIR = os.path.expanduser("~/.cache/tb-tray")
 LOW_BATT, REARM_BATT = 20, 25
 COLORS = {"ok": "#3fb950", "charging": "#e3b341",
@@ -207,24 +207,44 @@ class Tray:
         self.prev_link = linked
 
     def kick_audio(self, reason):
-        """Close and reopen the dongle's ALSA sink - the pipe it
-        streams through. ~1 s blip; revives a dongle that stopped
-        forwarding (verified live: suspend-toggle restored audio when
-        the sink was streaming, linked and silent to the wearer)."""
+        """Full card-profile flip - closes and reopens the dongle's
+        whole USB audio interface (~2 s). The suspend-toggle of 1.0.3
+        was sometimes not enough for a wedged dongle (a day of live
+        wedges: kicks fired 8x, audio still died); the profile flip is
+        the user-proven heavy remedy."""
         try:
-            r = subprocess.run(["pactl", "list", "short", "sinks"],
+            r = subprocess.run(["pactl", "list", "short", "cards"],
                                capture_output=True, text=True, timeout=5)
-            name = next((l.split()[1] for l in r.stdout.splitlines()
+            card = next((l.split()[1] for l in r.stdout.splitlines()
                          if "Turtle_Beach" in l), None)
-            if not name:
-                print("tb-tray: kick: no Turtle Beach sink found",
+            if not card:
+                print("tb-tray: kick: no Turtle Beach card found",
                       flush=True)
                 return
-            subprocess.run(["pactl", "suspend-sink", name, "1"],
-                           capture_output=True, timeout=5)
-            time.sleep(0.4)
-            subprocess.run(["pactl", "suspend-sink", name, "0"],
-                           capture_output=True, timeout=5)
+            r = subprocess.run(["pactl", "list", "cards"],
+                               capture_output=True, text=True, timeout=5)
+            profile, cur = None, None
+            for line in r.stdout.splitlines():
+                ls = line.strip()
+                if ls.startswith("Name: "):
+                    cur = ls.split(": ", 1)[1]
+                elif cur == card and ls.startswith("Active Profile: "):
+                    profile = ls.split(": ", 1)[1].strip()
+                    break
+            if not profile:
+                profile = "output:analog-stereo+input:mono-fallback"
+            alt = ("output:iec958-stereo" if "analog" in profile
+                   else "output:analog-stereo+input:mono-fallback")
+            for prof in (alt, profile):
+                rc = subprocess.run(["pactl", "set-card-profile",
+                                      card, prof],
+                                     capture_output=True, text=True,
+                                     timeout=10)
+                if rc.returncode != 0:
+                    print("tb-tray: kick: profile flip failed: %s"
+                          % (rc.stderr.strip() or "unknown"), flush=True)
+                    return
+                time.sleep(0.5)
             print("tb-tray: audio pipe kicked (%s)" % reason, flush=True)
         except OSError as e:
             print("tb-tray: kick failed: %s" % e, flush=True)
